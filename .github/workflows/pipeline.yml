@@ -17,7 +17,9 @@ on:
       select_category_topic:
         description: "Select category topic"
         type: choice
+        required: false
         options:
+          - ""
           - specifications
           - reference-apps
           - automation-testing
@@ -30,7 +32,9 @@ on:
       select_subcategory_topic:
         description: "Select subcategory topic"
         type: choice
+        required: false
         options:
+          - ""
           - buyer-apps
           - seller-apps
           - logistics-apps
@@ -41,7 +45,9 @@ on:
       select_domain_topic:
         description: "Select domain topic"
         type: choice
+        required: false
         options:
+          - ""
           - retail
           - logistics
           - agriculture
@@ -52,7 +58,9 @@ on:
       select_type_topic:
         description: "Select type topic"
         type: choice
+        required: false
         options:
+          - ""
           - frontend
           - backend
           - mobile
@@ -92,7 +100,20 @@ jobs:
             echo " Repo '$REPO' already exists."
             exit 1
           fi
-          DESC="${REPO}: [${{ github.event.inputs.select_category_topic }}/${{ github.event.inputs.select_subcategory_topic }}] ${{ github.event.inputs.brief_description }} | domain: ${{ github.event.inputs.select_domain_topic }}"
+
+          # Start with just brief description
+          DESC="${{ github.event.inputs.brief_description }}"
+
+          # Add category/subcategory if present
+          if [ -n "${{ github.event.inputs.select_category_topic }}" ] || [ -n "${{ github.event.inputs.select_subcategory_topic }}" ]; then
+            DESC="[${{ github.event.inputs.select_category_topic }}/${{ github.event.inputs.select_subcategory_topic }}] $DESC"
+          fi
+
+          # Add domain if present
+          if [ -n "${{ github.event.inputs.select_domain_topic }}" ]; then
+            DESC="$DESC | domain: ${{ github.event.inputs.select_domain_topic }}"
+          fi
+
           CREATE_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
@@ -104,17 +125,39 @@ jobs:
             echo " Failed with status $CREATE_RESP"
             exit 1
           fi
+
+
       - name: Add Topics to Repository
         run: |
           ORG="${ORG}"
           REPO="${{ github.event.inputs.repo_name }}"
-          TOPICS="[\"category-${{ github.event.inputs.select_category_topic }}\",\"subcategory-${{ github.event.inputs.select_subcategory_topic }}\",\"type-${{ github.event.inputs.select_type_topic }}\",\"domain-${{ github.event.inputs.select_domain_topic }}\"]"
+ 
+          # start with empty list
+          TOPICS="[]"
+
+          # add only if user selected something
+          if [ -n "${{ github.event.inputs.select_category_topic }}" ]; then
+          TOPICS=$(echo $TOPICS | jq '. + ["category-${{ github.event.inputs.select_category_topic }}"]')
+          fi
+          if [ -n "${{ github.event.inputs.select_subcategory_topic }}" ]; then
+          TOPICS=$(echo $TOPICS | jq '. + ["subcategory-${{ github.event.inputs.select_subcategory_topic }}"]')
+          fi
+          if [ -n "${{ github.event.inputs.select_type_topic }}" ]; then
+          TOPICS=$(echo $TOPICS | jq '. + ["type-${{ github.event.inputs.select_type_topic }}"]')
+          fi
+          if [ -n "${{ github.event.inputs.select_domain_topic }}" ]; then
+          TOPICS=$(echo $TOPICS | jq '. + ["domain-${{ github.event.inputs.select_domain_topic }}"]')
+          fi
+
+          # call GitHub API
           curl -X PUT \
-            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/$ORG/$REPO/topics \
-            -d "{\"names\": $TOPICS}"
+          -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+          -H "Accept: application/vnd.github+json" \
+           https://api.github.com/repos/$ORG/$REPO/topics \
+          -d "{\"names\": $TOPICS}"
+
           echo " Topics added: $TOPICS"
+
       - name: Install Yeoman
         run: npm install -g yo
 
